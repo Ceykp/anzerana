@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import {
@@ -140,6 +142,8 @@ export async function POST(request: Request) {
       ),
     };
 
+    const iyzico = await getIyzico();
+    
     const result = await new Promise<any>(
       (resolve, reject) => {
         iyzico.checkoutFormInitialize.create(
