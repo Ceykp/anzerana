@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+/* =========================
+   LIGHT THEME (DEFAULT)
+========================= */
+:root {
+  --background: #fef8ef;
+  --foreground: #10271f;
+
+  --card: #ffffff;
+  --card-foreground: #10271f;
+
+  --muted: #f6f2ea;
+  --muted-foreground: #5a6b64;
+
+  --border: #f3e7d7;
+
+  --primary: #0f3d2e;
+  --primary-foreground: #ffffff;
+
+  --accent: #f5e6c8;
+  --accent-foreground: #10271f;
+
+  --font-sans-custom: var(--font-montserrat), Arial, sans-serif;
+}
+
+/* =========================
+   DARK THEME
+========================= */
+.dark {
+  --background: #0b1411;
+  --foreground: #f5f5f5;
+
+  --card: #111c18;
+  --card-foreground: #f5f5f5;
+
+  --muted: #16221d;
+  --muted-foreground: #9fb2a8;
+
+  --border: #1f2e28;
+
+  --primary: #1f7a5c;
+  --primary-foreground: #ffffff;
+
+  --accent: #2a3b33;
+  --accent-foreground: #e6f2ec;
+}
+
+/* =========================
+   BASE
+========================= */
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans-custom);
+  letter-spacing: 0.01em;
+
+  /* 🔥 smooth theme transition */
+  transition:
+    background-color 0.4s ease,
+    color 0.4s ease;
+}
+
+/* =========================
+   TYPOGRAPHY
+========================= */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-sans-custom);
+  letter-spacing: -0.01em;
+}
+
+/* =========================
+   PREMIUM TOUCHES
+========================= */
+
+/* Scrollbar (çok fark yaratır) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--muted);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 999px;
+}
+
+/* Selection color */
+::selection {
+  background: var(--primary);
+  color: white;
+}
+
+/* =========================
+   MARQUEE
+========================= */
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 18s linear infinite;
+}
