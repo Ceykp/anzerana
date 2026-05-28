@@ -18,16 +18,10 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   metadataBase: new URL("https://anzerana.com"),
   title: {
-    default: "Anzerana | Coğrafi İşaretli Anzer Balı",
+    default: "Anzerana",
     template: "%s | Anzerana",
-    
-    icons: {
-      icon: "/favicon.png",
-    },
-
   },
-  description:
-    "Anzerana, Coğrafi İşaretli Anzer Balı ve Seçkin Yerel Ürünleri Premium Deneyimle Sunar.",
+  description: "Coğrafi İşaretli Anzer Balı ve yöresel ürünler.",
   keywords: [
     "Anzer balı",
     "Coğrafi İşaretli Bal",

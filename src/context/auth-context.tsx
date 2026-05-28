@@ -37,6 +37,10 @@ type AuthContextType = {
 const AUTH_STORAGE_KEY = "anzerana-auth-v2";
 const USERS_STORAGE_KEY = "anzerana-users-v2";
 
+const CartStoragePrefix = "anzerana-cart-v1";
+const WishlistStoragePrefix = "anzerana-wishlist-v1";
+const ProfileAddressPrefix = "anzerana-profile-address-v1";
+
 const AuthContext = createContext<AuthContextType | null>(null);
 
 function createId() {
@@ -45,6 +49,16 @@ function createId() {
   }
 
   return `user-${Date.now()}`;
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function getSafeAccountKey(email?: string | null) {
+  if (!email) return "guest";
+
+  return email.trim().toLocaleLowerCase("tr").replace(/[^a-z0-9@._-]/gi, "");
 }
 
 function getStoredUsers(): StoredUser[] {
@@ -62,6 +76,16 @@ function saveStoredUsers(users: StoredUser[]) {
   localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 }
 
+function clearLegacyUserData() {
+  localStorage.removeItem(CartStoragePrefix);
+  localStorage.removeItem(WishlistStoragePrefix);
+  localStorage.removeItem(ProfileAddressPrefix);
+}
+
+function clearSessionOnly() {
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
@@ -70,15 +94,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!raw) return;
 
     try {
-      setUser(JSON.parse(raw));
+      const parsed = JSON.parse(raw) as User;
+
+      if (!parsed?.email) {
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+        return;
+      }
+
+      setUser({
+        ...parsed,
+        email: normalizeEmail(parsed.email),
+      });
     } catch {
       localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   }, []);
 
   function setSession(nextUser: User) {
-    setUser(nextUser);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextUser));
+    const safeUser: User = {
+      ...nextUser,
+      email: normalizeEmail(nextUser.email),
+    };
+
+    clearLegacyUserData();
+    setUser(safeUser);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(safeUser));
   }
 
   function register(payload: {
@@ -87,11 +127,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string;
   }): AuthResult {
     const name = payload.name.trim();
-    const email = payload.email.trim().toLowerCase();
+    const email = normalizeEmail(payload.email);
     const password = payload.password.trim();
 
     if (!name || !email || !password) {
       return { ok: false, error: "Lütfen tüm alanları doldurun." };
+    }
+
+    if (!email.includes("@")) {
+      return { ok: false, error: "Geçerli bir e-posta adresi girin." };
     }
 
     if (password.length < 6) {
@@ -99,7 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const users = getStoredUsers();
-    const exists = users.some((item) => item.email === email);
+    const exists = users.some((item) => normalizeEmail(item.email) === email);
 
     if (exists) {
       return { ok: false, error: "Bu e-posta adresiyle kayıtlı bir hesap var." };
@@ -123,7 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   function login(emailInput: string, passwordInput: string): AuthResult {
-    const email = emailInput.trim().toLowerCase();
+    const email = normalizeEmail(emailInput);
     const password = passwordInput.trim();
 
     if (!email || !password) {
@@ -133,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const users = getStoredUsers();
     const found = users.find(
       (item) =>
-        item.email === email &&
+        normalizeEmail(item.email) === email &&
         item.password === password &&
         item.provider === "email",
     );
@@ -158,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       provider === "google" ? "Google Kullanıcısı" : "Facebook Kullanıcısı";
 
     const users = getStoredUsers();
-    const existing = users.find((item) => item.email === email);
+    const existing = users.find((item) => normalizeEmail(item.email) === email);
 
     if (existing) {
       const { password: _password, ...publicUser } = existing;
@@ -181,17 +225,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   function updateUser(payload: Partial<Pick<User, "name" | "email">>) {
     if (!user) return;
 
+    const nextEmail = payload.email
+      ? normalizeEmail(payload.email)
+      : user.email;
+
     const updatedUser: User = {
       ...user,
       name: payload.name?.trim() || user.name,
-      email: payload.email?.trim().toLowerCase() || user.email,
+      email: nextEmail,
     };
+
+    const users = getStoredUsers();
+
+    const emailUsedByAnotherUser = users.some(
+      (item) =>
+        item.id !== user.id &&
+        normalizeEmail(item.email) === normalizeEmail(updatedUser.email),
+    );
+
+    if (emailUsedByAnotherUser) return;
 
     setSession(updatedUser);
 
-    const users = getStoredUsers();
     const updatedUsers = users.map((item) =>
-      item.id === user.id ? { ...item, ...updatedUser } : item,
+      item.id === user.id
+        ? {
+            ...item,
+            name: updatedUser.name,
+            email: updatedUser.email,
+          }
+        : item,
     );
 
     saveStoredUsers(updatedUsers);
@@ -199,7 +262,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   function logout() {
     setUser(null);
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    clearSessionOnly();
   }
 
   return (
@@ -220,6 +283,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used inside AuthProvider");
+
+  if (!context) {
+    throw new Error("useAuth must be used inside AuthProvider");
+  }
+
   return context;
 }

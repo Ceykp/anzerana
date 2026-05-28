@@ -1,7 +1,16 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useSession } from "next-auth/react";
 import type { Product, ProductVariant } from "@/lib/products";
+import { useAuth } from "@/context/auth-context";
 
 export type CartItem = {
   productId: string;
@@ -40,7 +49,7 @@ type CartContextType = {
   clearToast: () => void;
 };
 
-const STORAGE_KEY = "anzerana-cart-v1";
+const STORAGE_KEY_PREFIX = "anzerana-cart-v1";
 const FREE_SHIPPING_THRESHOLD = 3500;
 const SHIPPING_COST = 200;
 const INTRO_PACKAGE_PRODUCT_ID = "kahvalti-paketi";
@@ -49,6 +58,15 @@ const CartContext = createContext<CartContextType | null>(null);
 
 function getItemKey(productId: string, variantId: string) {
   return `${productId}:${variantId}`;
+}
+
+function getSafeAccountKey(email?: string | null) {
+  if (!email) return "guest";
+  return email.trim().toLowerCase().replace(/[^a-z0-9@._-]/gi, "");
+}
+
+function getCartStorageKey(accountKey: string) {
+  return `${STORAGE_KEY_PREFIX}:${accountKey}`;
 }
 
 function parsePrice(priceText?: string | null) {
@@ -112,33 +130,116 @@ export function getCartItemKey(productId: string, variantId: string) {
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession();
+  const { user } = useAuth();
+
+  const sessionEmail = session?.user?.email ?? null;
+  const localEmail = user?.email ?? null;
+  const activeEmail = sessionEmail ?? localEmail;
+  const isDatabaseUser = Boolean(sessionEmail);
+
+  const accountKey = getSafeAccountKey(activeEmail);
+  const storageKey = getCartStorageKey(accountKey);
+
   const [items, setItems] = useState<CartItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [lastAddedMessage, setLastAddedMessage] = useState<string | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    if (status === "loading") return;
 
-    if (!raw) {
-      setIsReady(true);
-      return;
+    let cancelled = false;
+
+    async function loadCart() {
+      setLoadedKey(null);
+
+      if (isDatabaseUser) {
+        try {
+          const response = await fetch("/api/account/cart", {
+            method: "GET",
+          });
+
+          const result = await response.json().catch(() => null);
+
+          if (!cancelled) {
+            if (response.ok) {
+              setItems(normalizeCartItems(result?.items ?? []));
+            } else {
+              setItems([]);
+            }
+
+            setLoadedKey(storageKey);
+          }
+
+          return;
+        } catch {
+          if (!cancelled) {
+            setItems([]);
+            setLoadedKey(storageKey);
+          }
+
+          return;
+        }
+      }
+
+      const raw = localStorage.getItem(storageKey);
+
+      if (!raw) {
+        setItems([]);
+        setLoadedKey(storageKey);
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw);
+        setItems(normalizeCartItems(parsed));
+      } catch {
+        localStorage.removeItem(storageKey);
+        setItems([]);
+      } finally {
+        setLoadedKey(storageKey);
+      }
     }
 
-    try {
-      const parsed = JSON.parse(raw);
-      setItems(normalizeCartItems(parsed));
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setIsReady(true);
-    }
-  }, []);
+    loadCart();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey, status, isDatabaseUser]);
 
   useEffect(() => {
-    if (!isReady) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items, isReady]);
+    if (loadedKey !== storageKey) return;
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    saveTimerRef.current = setTimeout(async () => {
+      if (isDatabaseUser) {
+        await fetch("/api/account/cart", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ items }),
+        }).catch(() => null);
+
+        return;
+      }
+
+      localStorage.setItem(storageKey, JSON.stringify(items));
+    }, 350);
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
+  }, [items, storageKey, loadedKey, isDatabaseUser]);
 
   const itemCount = useMemo(
     () => items.reduce((total, item) => total + item.quantity, 0),
@@ -258,8 +359,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  function clearCart() {
+  async function clearCart() {
     setItems([]);
+
+    if (isDatabaseUser) {
+      await fetch("/api/account/cart", {
+        method: "DELETE",
+      }).catch(() => null);
+
+      return;
+    }
+
+    localStorage.removeItem(storageKey);
   }
 
   return (

@@ -70,12 +70,11 @@ export default function SepetPage() {
     }
   }, [session?.user?.email]);
 
-  const whatsappMessage =
   async function handleCardPayment() {
     setOrderMessage("");
-  
+
     const safeCustomerEmail = session?.user?.email ?? customerEmail.trim();
-  
+
     if (
       !customerName ||
       !safeCustomerEmail ||
@@ -89,9 +88,9 @@ export default function SepetPage() {
       );
       return;
     }
-  
+
     setIsStartingPayment(true);
-  
+
     const response = await fetch("/api/payment/init", {
       method: "POST",
       headers: {
@@ -123,33 +122,34 @@ export default function SepetPage() {
         })),
       }),
     });
-  
+
     const result = await response.json().catch(() => null);
-  
+
     setIsStartingPayment(false);
-  
+
     if (!response.ok) {
       setOrderMessage(result?.error ?? "Ödeme başlatılamadı.");
       return;
     }
-  
+
     if (!result?.checkoutFormContent) {
       setOrderMessage("Ödeme formu alınamadı.");
       return;
     }
-  
+
     const paymentWindow = window.open("", "_self");
-  
+
     if (!paymentWindow) {
       setOrderMessage("Ödeme sayfası açılamadı.");
       return;
     }
-  
+
     paymentWindow.document.open();
     paymentWindow.document.write(result.checkoutFormContent);
     paymentWindow.document.close();
   }
 
+  const whatsappMessage =
     items.length > 0
       ? `Merhaba, sepetteki ürünlerim için sipariş oluşturmak istiyorum:\n\n${items
           .map(
@@ -403,8 +403,8 @@ export default function SepetPage() {
           </div>
 
           <p className="mt-4 rounded-2xl bg-amber-50/60 p-3 text-xs leading-5 text-emerald-900/70 dark:bg-slate-950 dark:text-slate-300">
-            Bu aşamada ödeme alınmaz. Siparişiniz tarafımıza iletilir; stok,
-            teslimat ve ödeme bilgileri onay sürecinde netleştirilir.
+            Manuel siparişte ödeme alınmaz. Kartla ödeme seçeneğinde güvenli
+            ödeme ekranına yönlendirilirsiniz.
           </p>
 
           <form
@@ -566,19 +566,18 @@ export default function SepetPage() {
               </label>
             ) : null}
 
-<button
-  type="button"
-  disabled={isStartingPayment || isSubmittingOrder}
-  onClick={handleCardPayment}
-  className="w-full rounded-full bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
->
-  {isStartingPayment ? "Ödeme Başlatılıyor..." : "Kartla Güvenli Öde"}
-</button>
-            
-            
+            <button
+              type="button"
+              disabled={isStartingPayment || isSubmittingOrder}
+              onClick={handleCardPayment}
+              className="w-full rounded-full bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
+            >
+              {isStartingPayment ? "Ödeme Başlatılıyor..." : "Kartla Güvenli Öde"}
+            </button>
+
             <button
               type="submit"
-              disabled={isSubmittingOrder}
+              disabled={isSubmittingOrder || isStartingPayment}
               className="w-full rounded-full bg-emerald-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-700"
             >
               {isSubmittingOrder

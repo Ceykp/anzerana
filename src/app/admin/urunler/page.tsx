@@ -6,44 +6,69 @@ import { useSession } from "next-auth/react";
 import { categories, type Product } from "@/lib/products";
 import { getProductsFromSupabase } from "@/lib/supabase-products";
 
-function getStockStatus(product: Product) {
+type StockProduct = Product & {
+  stockQuantity?: number;
+  reservedQuantity?: number;
+  lowStockThreshold?: number;
+  trackStock?: boolean;
+  allowBackorder?: boolean;
+};
+
+type StockStatus = {
+  label: string;
+  detail: string;
+  className: string;
+};
+
+function getStockStatus(product: StockProduct): StockStatus {
   const stockQuantity = product.stockQuantity ?? 0;
+  const reservedQuantity = product.reservedQuantity ?? 0;
   const lowStockThreshold = product.lowStockThreshold ?? 3;
   const trackStock = Boolean(product.trackStock);
   const allowBackorder = Boolean(product.allowBackorder);
+  const availableStock = Math.max(stockQuantity - reservedQuantity, 0);
 
   if (!trackStock) {
     return {
       label: "Takip Kapalı",
+      detail: "Stok takibi yapılmıyor.",
       className:
-        "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-      detail: "-",
+        "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
     };
   }
 
-  if (stockQuantity <= 0 && !allowBackorder) {
+  if (availableStock <= 0 && allowBackorder) {
     return {
-      label: "Tükendi",
+      label: "Ön Sipariş",
+      detail: `${stockQuantity} stok / ${reservedQuantity} rezerv`,
       className:
-        "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-200",
-      detail: `${stockQuantity} adet`,
+        "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200",
     };
   }
 
-  if (stockQuantity <= lowStockThreshold) {
+  if (availableStock <= 0) {
     return {
-      label: "Kritik Stok",
+      label: "Stok Yok",
+      detail: `${stockQuantity} stok / ${reservedQuantity} rezerv`,
       className:
-        "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
-      detail: `${stockQuantity} adet`,
+        "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200",
+    };
+  }
+
+  if (availableStock <= lowStockThreshold) {
+    return {
+      label: "Düşük Stok",
+      detail: `${availableStock} satılabilir / ${reservedQuantity} rezerv`,
+      className:
+        "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200",
     };
   }
 
   return {
-    label: "Stokta",
+    label: "Stokta Var",
+    detail: `${availableStock} satılabilir / ${reservedQuantity} rezerv`,
     className:
-      "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100",
-    detail: `${stockQuantity} adet`,
+      "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
   };
 }
 
@@ -150,7 +175,7 @@ export default function AdminProductsPage() {
       </div>
 
       <div className="mt-6 overflow-hidden rounded-3xl border border-amber-100 bg-white shadow-sm dark:border-emerald-900 dark:bg-slate-900">
-        <div className="grid grid-cols-[1.35fr_1fr_110px_130px_130px_120px] gap-3 border-b border-amber-100 bg-amber-50/60 px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-900 dark:border-emerald-900 dark:bg-slate-950 dark:text-slate-300">
+        <div className="hidden grid-cols-[1.35fr_1fr_110px_150px_130px_120px] gap-3 border-b border-amber-100 bg-amber-50/60 px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-900 dark:border-emerald-900 dark:bg-slate-950 dark:text-slate-300 lg:grid">
           <span>Ürün</span>
           <span>Kategori</span>
           <span>Fiyat</span>
@@ -175,7 +200,7 @@ export default function AdminProductsPage() {
               return (
                 <article
                   key={product.id}
-                  className="grid grid-cols-[1.35fr_1fr_110px_130px_130px_120px] items-center gap-3 px-5 py-4 text-sm"
+                  className="grid gap-4 px-5 py-4 text-sm lg:grid-cols-[1.35fr_1fr_110px_150px_130px_120px] lg:items-center lg:gap-3"
                 >
                   <div>
                     <p className="font-semibold text-emerald-950 dark:text-white">
@@ -196,7 +221,7 @@ export default function AdminProductsPage() {
 
                   <div className="flex flex-col gap-1">
                     <span
-                      className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${stockStatus.className}`}
+                      className={`w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${stockStatus.className}`}
                     >
                       {stockStatus.label}
                     </span>
@@ -224,7 +249,7 @@ export default function AdminProductsPage() {
                     ) : null}
                   </div>
 
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2 lg:flex-col">
                     <Link
                       href={`/admin/urunler/${product.slug}`}
                       className="rounded-full bg-emerald-900 px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-emerald-800 dark:bg-emerald-700"

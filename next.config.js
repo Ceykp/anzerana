@@ -1,16 +1,9 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-
+﻿/** @type {import("next").NextConfig} */
+const nextConfig = {
   serverExternalPackages: ["iyzipay"],
+
   images: {
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "lh3.googleusercontent.com",
-        pathname: "/**",
-      },
-
       {
         protocol: "https",
         hostname: "wsrgkfvqlypmpfsdajav.supabase.co",
@@ -20,5 +13,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
-
+module.exports = nextConfig;

@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useAuth } from "@/context/auth-context";
 
 type WishlistContextType = {
   ids: string[];
@@ -12,7 +14,7 @@ type WishlistContextType = {
   clearWishlist: () => void;
 };
 
-const STORAGE_KEY = "anzerana-wishlist-v1";
+const STORAGE_KEY_PREFIX = "anzerana-wishlist-v1";
 
 const WishlistContext = createContext<WishlistContextType | null>(null);
 
@@ -29,15 +31,35 @@ function normalizeIds(value: unknown): string[] {
   );
 }
 
+function getSafeAccountKey(email?: string | null) {
+  if (!email) return "guest";
+
+  return email.trim().toLocaleLowerCase("tr").replace(/[^a-z0-9@._-]/gi, "");
+}
+
+function getWishlistStorageKey(accountKey: string) {
+  return `${STORAGE_KEY_PREFIX}:${accountKey}`;
+}
+
 export function WishlistProvider({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession();
+  const { user } = useAuth();
+
+  const activeEmail = session?.user?.email ?? user?.email ?? null;
+  const accountKey = getSafeAccountKey(activeEmail);
+  const storageKey = getWishlistStorageKey(accountKey);
+
   const [ids, setIds] = useState<string[]>([]);
-  const [isReady, setIsReady] = useState(false);
+  const [loadedStorageKey, setLoadedStorageKey] = useState<string | null>(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    if (status === "loading") return;
+
+    const raw = localStorage.getItem(storageKey);
 
     if (!raw) {
-      setIsReady(true);
+      setIds([]);
+      setLoadedStorageKey(storageKey);
       return;
     }
 
@@ -45,16 +67,18 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
       const parsed = JSON.parse(raw);
       setIds(normalizeIds(parsed));
     } catch {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(storageKey);
+      setIds([]);
     } finally {
-      setIsReady(true);
+      setLoadedStorageKey(storageKey);
     }
-  }, []);
+  }, [storageKey, status]);
 
   useEffect(() => {
-    if (!isReady) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
-  }, [ids, isReady]);
+    if (loadedStorageKey !== storageKey) return;
+
+    localStorage.setItem(storageKey, JSON.stringify(ids));
+  }, [ids, storageKey, loadedStorageKey]);
 
   function add(id: string) {
     const cleanId = id.trim();
@@ -87,6 +111,7 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
 
   function clearWishlist() {
     setIds([]);
+    localStorage.removeItem(storageKey);
   }
 
   const value = useMemo(

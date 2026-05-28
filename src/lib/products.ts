@@ -30,6 +30,13 @@ export type Product = {
   ratingSummary?: number;
   reviewCount?: number;
   recommendedProductIds?: string[];
+
+  stockQuantity?: number;
+lowStockThreshold?: number;
+trackStock?: boolean;
+allowBackorder?: boolean;
+reservedQuantity?: number;
+
 };
 
 const balDescription =
