@@ -134,20 +134,25 @@ export default function ProfilPage() {
 
   useEffect(() => {
     async function loadAccountOrders() {
-      if (!activeUser?.email) return;
-
-      setOrdersLoading(true);
-
-      const response = await fetch("/api/account/orders");
+      const orderEmail = session?.user?.email ?? activeUser?.email ?? "";
+    
+      if (!orderEmail) {
+        setOrdersMessage("Giriş gerekli.");
+        return;
+      }
+    
+      const response = await fetch(
+        `/api/account/orders?email=${encodeURIComponent(orderEmail)}`,
+      );
+    
       const result = await response.json().catch(() => null);
-
+    
       if (response.ok) {
-        setAccountOrders(result.orders ?? []);
+        setAccountOrders(result?.orders ?? []);
         setOrdersMessage("");
       } else {
         setOrdersMessage(result?.error ?? "Siparişleriniz yüklenemedi.");
       }
-
       setOrdersLoading(false);
     }
 

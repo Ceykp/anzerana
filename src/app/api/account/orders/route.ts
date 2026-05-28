@@ -2,10 +2,22 @@ import { auth } from "@/auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { NextResponse } from "next/server";
 
-export async function GET() {
-  const session = await auth();
+export const runtime = "nodejs";
 
-  if (!session?.user?.email) {
+function normalizeEmail(email?: string | null) {
+  return email?.trim().toLowerCase() ?? "";
+}
+
+export async function GET(request: Request) {
+  const session = await auth();
+  const url = new URL(request.url);
+
+  const sessionEmail = normalizeEmail(session?.user?.email);
+  const queryEmail = normalizeEmail(url.searchParams.get("email"));
+
+  const email = sessionEmail || queryEmail;
+
+  if (!email) {
     return NextResponse.json({ error: "Giriş gerekli." }, { status: 401 });
   }
 
@@ -32,7 +44,7 @@ export async function GET() {
       created_at
       `,
     )
-    .eq("customer_email", session.user.email)
+    .eq("customer_email", email)
     .order("created_at", { ascending: false });
 
   if (error) {
