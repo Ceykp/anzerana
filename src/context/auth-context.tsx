@@ -12,10 +12,6 @@ export type User = {
   createdAt: string;
 };
 
-type StoredUser = User & {
-  password?: string;
-};
-
 type AuthResult = {
   ok: boolean;
   error?: string;
@@ -23,19 +19,18 @@ type AuthResult = {
 
 type AuthContextType = {
   user: User | null;
-  login: (email: string, password: string) => AuthResult;
+  login: (email: string, password: string) => Promise<AuthResult>;
   register: (payload: {
     name: string;
     email: string;
     password: string;
-  }) => AuthResult;
+  }) => Promise<AuthResult>;
   socialLogin: (provider: "google" | "facebook") => void;
   updateUser: (payload: Partial<Pick<User, "name" | "email">>) => void;
   logout: () => void;
 };
 
 const AUTH_STORAGE_KEY = "anzerana-auth-v2";
-const USERS_STORAGE_KEY = "anzerana-users-v2";
 
 const CartStoragePrefix = "anzerana-cart-v1";
 const WishlistStoragePrefix = "anzerana-wishlist-v1";
@@ -43,37 +38,8 @@ const ProfileAddressPrefix = "anzerana-profile-address-v1";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function createId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `user-${Date.now()}`;
-}
-
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
-}
-
-function getSafeAccountKey(email?: string | null) {
-  if (!email) return "guest";
-
-  return email.trim().toLocaleLowerCase("tr").replace(/[^a-z0-9@._-]/gi, "");
-}
-
-function getStoredUsers(): StoredUser[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = localStorage.getItem(USERS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredUsers(users: StoredUser[]) {
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 }
 
 function clearLegacyUserData() {
@@ -86,6 +52,22 @@ function clearSessionOnly() {
   localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
+function normalizeUser(value: unknown): User | null {
+  if (!value || typeof value !== "object") return null;
+
+  const user = value as Partial<User>;
+
+  if (!user.id || !user.name || !user.email) return null;
+
+  return {
+    id: String(user.id),
+    name: String(user.name),
+    email: normalizeEmail(String(user.email)),
+    provider: (user.provider ?? "email") as AuthProviderName,
+    createdAt: String(user.createdAt ?? new Date().toISOString()),
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
@@ -94,38 +76,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!raw) return;
 
     try {
-      const parsed = JSON.parse(raw) as User;
+      const parsed = JSON.parse(raw);
+      const safeUser = normalizeUser(parsed);
 
-      if (!parsed?.email) {
+      if (!safeUser) {
         localStorage.removeItem(AUTH_STORAGE_KEY);
         return;
       }
 
-      setUser({
-        ...parsed,
-        email: normalizeEmail(parsed.email),
-      });
+      setUser(safeUser);
     } catch {
       localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   }, []);
 
   function setSession(nextUser: User) {
-    const safeUser: User = {
-      ...nextUser,
-      email: normalizeEmail(nextUser.email),
-    };
+    const safeUser = normalizeUser(nextUser);
+
+    if (!safeUser) return;
 
     clearLegacyUserData();
     setUser(safeUser);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(safeUser));
   }
 
-  function register(payload: {
+  async function register(payload: {
     name: string;
     email: string;
     password: string;
-  }): AuthResult {
+  }): Promise<AuthResult> {
     const name = payload.name.trim();
     const email = normalizeEmail(payload.email);
     const password = payload.password.trim();
@@ -142,31 +121,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, error: "Şifre en az 6 karakter olmalıdır." };
     }
 
-    const users = getStoredUsers();
-    const exists = users.some((item) => normalizeEmail(item.email) === email);
+    const response = await fetch("/api/customer-auth/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+      }),
+    });
 
-    if (exists) {
-      return { ok: false, error: "Bu e-posta adresiyle kayıtlı bir hesap var." };
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: result?.error ?? "Kayıt oluşturulamadı.",
+      };
     }
 
-    const nextUser: StoredUser = {
-      id: createId(),
-      name,
-      email,
-      password,
-      provider: "email",
-      createdAt: new Date().toISOString(),
-    };
+    const safeUser = normalizeUser(result?.user);
 
-    saveStoredUsers([...users, nextUser]);
+    if (!safeUser) {
+      return {
+        ok: false,
+        error: "Kullanıcı bilgileri alınamadı.",
+      };
+    }
 
-    const { password: _password, ...publicUser } = nextUser;
-    setSession(publicUser);
+    setSession(safeUser);
 
     return { ok: true };
   }
 
-  function login(emailInput: string, passwordInput: string): AuthResult {
+  async function login(
+    emailInput: string,
+    passwordInput: string,
+  ): Promise<AuthResult> {
     const email = normalizeEmail(emailInput);
     const password = passwordInput.trim();
 
@@ -174,20 +167,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, error: "E-posta ve şifre alanları zorunludur." };
     }
 
-    const users = getStoredUsers();
-    const found = users.find(
-      (item) =>
-        normalizeEmail(item.email) === email &&
-        item.password === password &&
-        item.provider === "email",
-    );
+    const response = await fetch("/api/customer-auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    });
 
-    if (!found) {
-      return { ok: false, error: "E-posta veya şifre hatalı." };
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: result?.error ?? "E-posta veya şifre hatalı.",
+      };
     }
 
-    const { password: _password, ...publicUser } = found;
-    setSession(publicUser);
+    const safeUser = normalizeUser(result?.user);
+
+    if (!safeUser) {
+      return {
+        ok: false,
+        error: "Kullanıcı bilgileri alınamadı.",
+      };
+    }
+
+    setSession(safeUser);
 
     return { ok: true };
   }
@@ -201,63 +210,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const name =
       provider === "google" ? "Google Kullanıcısı" : "Facebook Kullanıcısı";
 
-    const users = getStoredUsers();
-    const existing = users.find((item) => normalizeEmail(item.email) === email);
-
-    if (existing) {
-      const { password: _password, ...publicUser } = existing;
-      setSession(publicUser);
-      return;
-    }
-
-    const nextUser: StoredUser = {
-      id: createId(),
+    setSession({
+      id: `${provider}-${email}`,
       name,
       email,
       provider,
       createdAt: new Date().toISOString(),
-    };
-
-    saveStoredUsers([...users, nextUser]);
-    setSession(nextUser);
+    });
   }
 
   function updateUser(payload: Partial<Pick<User, "name" | "email">>) {
     if (!user) return;
 
-    const nextEmail = payload.email
-      ? normalizeEmail(payload.email)
-      : user.email;
-
     const updatedUser: User = {
       ...user,
       name: payload.name?.trim() || user.name,
-      email: nextEmail,
+      email: payload.email ? normalizeEmail(payload.email) : user.email,
     };
 
-    const users = getStoredUsers();
-
-    const emailUsedByAnotherUser = users.some(
-      (item) =>
-        item.id !== user.id &&
-        normalizeEmail(item.email) === normalizeEmail(updatedUser.email),
-    );
-
-    if (emailUsedByAnotherUser) return;
-
     setSession(updatedUser);
-
-    const updatedUsers = users.map((item) =>
-      item.id === user.id
-        ? {
-            ...item,
-            name: updatedUser.name,
-            email: updatedUser.email,
-          }
-        : item,
-    );
-
-    saveStoredUsers(updatedUsers);
   }
 
   function logout() {

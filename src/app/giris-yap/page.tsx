@@ -32,18 +32,17 @@ export default function GirisYapPage() {
 
       <form
         className="mt-6 rounded-2xl border border-amber-100 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-emerald-900 dark:bg-slate-900 dark:shadow-black/20"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
-
-          const result = login(email, password);
-
+        
+          const result = await login(email, password);
+        
           if (!result.ok) {
             setError(result.error ?? "Giriş yapılamadı.");
             return;
           }
-
-          setError("");
-          handleSuccess();
+        
+          router.push("/profil");
         }}
       >
         {error ? (

@@ -29,22 +29,16 @@ export default function KayitOlPage() {
 
       <form
         className="mt-6 rounded-2xl border border-amber-100 bg-white p-5 shadow-sm transition-colors duration-300 dark:border-emerald-900 dark:bg-slate-900 dark:shadow-black/20"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
-
-          if (password !== passwordAgain) {
-            setError("Şifreler eşleşmiyor.");
-            return;
-          }
-
-          const result = register({ name, email, password });
-
+        
+          const result = await register({ name, email, password });
+        
           if (!result.ok) {
             setError(result.error ?? "Kayıt oluşturulamadı.");
             return;
           }
-
-          setError("");
+        
           router.push("/profil");
         }}
       >
