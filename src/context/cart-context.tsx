@@ -50,7 +50,7 @@ type CartContextType = {
 };
 
 const STORAGE_KEY_PREFIX = "anzerana-cart-v1";
-const FREE_SHIPPING_THRESHOLD = 3500;
+const FREE_SHIPPING_THRESHOLD = 5000;
 const SHIPPING_COST = 200;
 const INTRO_PACKAGE_PRODUCT_ID = "kahvalti-paketi";
 

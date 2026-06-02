@@ -36,7 +36,7 @@ function TrustBar() {
     "Coğrafi İşaretli Ürün",
     "Özenli Paketleme",
     "WhatsApp Destek",
-    "3500₺ Üzeri Ücretsiz Kargo",
+    "5000₺ Üzeri Ücretsiz Kargo",
   ];
 
   const loopItems = [...items, ...items, ...items];
